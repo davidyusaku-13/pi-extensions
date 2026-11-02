@@ -1,0 +1,32 @@
+{
+  "name": "@davidyusaku/pi-extensions",
+  "version": "1.0.0",
+  "description": "Collection of extensions for the Pi coding agent harness: auto-title, block-env, and readable-stats.",
+  "keywords": [
+    "pi-package",
+    "pi-coding-agent",
+    "pi-extensions",
+    "developer-tools"
+  ],
+  "homepage": "https://github.com/davidyusaku-13/pi-extensions#readme",
+  "bugs": {
+    "url": "https://github.com/davidyusaku-13/pi-extensions/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/davidyusaku-13/pi-extensions.git"
+  },
+  "license": "MIT",
+  "author": "davidyusaku-13",
+  "type": "module",
+  "pi": {
+    "extensions": [
+      "./extensions/auto-title.ts",
+      "./extensions/block-env.ts",
+      "./extensions/readable-stats.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=1.0.0"
+  }
+}
