@@ -22,19 +22,28 @@ function basename(p: string): string {
   return p.split(/[\\/]/).pop() ?? p;
 }
 
+
+function isSafeTemplate(filename: string): boolean {
+  const lower = filename.toLowerCase();
+  return (
+    lower.endsWith(".example") ||
+    lower.endsWith(".sample") ||
+    lower.endsWith(".template") ||
+    lower.endsWith(".dist") ||
+    lower.endsWith(".default") ||
+    lower.includes(".example.") ||
+    lower.includes(".sample.") ||
+    lower.includes(".template.")
+  );
+}
+
 function isSensitiveEnvPath(pathStr: string): boolean {
   if (!pathStr) return false;
   const clean = sanitizeToken(pathStr);
   const base = basename(clean);
   if (!base) return false;
 
-  // Allow safe templates / example configurations
-  if (
-    base === ".env.example" ||
-    base.endsWith(".example") ||
-    base.endsWith(".sample") ||
-    base.endsWith(".template")
-  ) {
+  if (isSafeTemplate(base)) {
     return false;
   }
 
@@ -42,25 +51,23 @@ function isSensitiveEnvPath(pathStr: string): boolean {
   return base === ".env" || base.startsWith(".env.");
 }
 
+const envFilePattern = /(?:^|[\s"'`\/:;<>()\[\]{}|=])(\.env(\.[a-zA-Z0-9_-]+)*)/gi;
+
 function containsSensitiveEnvPath(text: string): boolean {
   if (!text) return false;
 
-  // 1. Check for standard whitespace/quote separated tokens
-  const tokens = text.split(/[\s"'`\\/:]+/);
-  for (const token of tokens) {
-    if (isSensitiveEnvPath(token)) return true;
-  }
-
-  // 2. Direct regex match for .env references not followed by safe extensions
-  // Catches tricky cases like cat<.env, $(echo .env), /path/.env
-  // Also rejects .environment, .env_setup via negative lookahead
-  const directEnvMatch = /(^|[^a-zA-Z0-9_-])\.env(\.[a-zA-Z0-9_-]+)?(?![a-zA-Z0-9_])(?![a-zA-Z0-9_.-]*(example|sample|template))/i;
-  if (directEnvMatch.test(text)) {
-    return true;
+  envFilePattern.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = envFilePattern.exec(text)) !== null) {
+    const matched = match[1];
+    if (!isSafeTemplate(matched)) {
+      return true;
+    }
   }
 
   return false;
 }
+
 
 function containsSuspiciousBase64Env(text: string): boolean {
   // Matches base64 representations of '.env' or common env commands
@@ -92,7 +99,7 @@ function isSuspiciousShellCommand(cmd: string): boolean {
   if (psEnvPattern.test(cmd)) return true;
 
   // 5. Python / Node / Ruby / Perl inline environment dumping
-  const inlineEnvPattern = /(os\.environ|process\.env|ENV\[|ENV\.to_h|%ENV)/i;
+  const inlineEnvPattern = /(?:python|python3|py|node|ruby|perl|bun|deno)\s+.*?(?:print\s*\(\s*os\.environ\s*\)|console\.log\s*\(\s*process\.env\s*\)|p(?:uts)?\s+ENV\.to_h)/i;
   if (inlineEnvPattern.test(cmd)) return true;
 
   return false;
@@ -163,7 +170,7 @@ export default function (pi: ExtensionAPI) {
     // We only block scripts that explicitly string-target sensitive .env files.
     if (tool === "codemode") {
       const code = String(input.code ?? "");
-      if (containsSensitiveEnvPath(code) || containsSuspiciousBase64Env(code)) {
+      if (containsSensitiveEnvPath(code)) {
         if (ctx.hasUI) ctx.ui.notify(`Blocked codemode script touching .env`, "warning");
         return {
           block: true,
