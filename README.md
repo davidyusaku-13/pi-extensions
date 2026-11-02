@@ -29,6 +29,11 @@ A collection of extensions for the [Pi coding agent harness](https://github.com/
 * Avoids waiting until 90%+ capacity, keeping model inferences fast, focused, and inexpensive.
 * Provides a `/compact-threshold` command to view real-time context usage or adjust the target threshold dynamically (e.g. `/compact-threshold 35`).
 
+### 5. `dollar-skills` (`extensions/dollar-skills.ts`)
+* Allows invoking any skill with a leading `$` shortcut instead of `/skill:` (e.g. `$shadcn add button`).
+* Seamlessly transforms `$skill-name [args]` into `/skill:skill-name [args]` at the input layer.
+* Adds a dedicated TUI autocomplete dropdown for `$` showing all discoverable skills with fuzzy matching.
+
 ---
 
 ## Installation
@@ -56,11 +61,8 @@ To add to your global Pi settings (`~/.pi/agent/settings.json`), add:
 You can also copy or load individual TypeScript files directly:
 
 ```bash
-pi --extension ./extensions/dynamic-compaction.ts
+pi --extension ./extensions/dollar-skills.ts
 ```
-
-Or copy whichever extension you need into your local directory:
-`~/.pi/agent/extensions/`
 
 ---
 

@@ -24,7 +24,8 @@
       "./extensions/auto-title.ts",
       "./extensions/block-env.ts",
       "./extensions/readable-stats.ts",
-      "./extensions/dynamic-compaction.ts"
+      "./extensions/dynamic-compaction.ts",
+      "./extensions/dollar-skills.ts"
     ]
   },
   "peerDependencies": {
