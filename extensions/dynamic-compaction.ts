@@ -5,6 +5,8 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
  *
  * Default threshold is 40% of the active model's context window.
  * Configurable via /compact-threshold <number> or options.
+ *
+ * Resumes conversation automatically if an active turn was interrupted by compaction.
  */
 
 const DEFAULT_TARGET_PERCENT = 40;
@@ -14,7 +16,7 @@ export default function (pi: ExtensionAPI) {
   let isCompacting = false;
   let lastCompactedTokens: number | null = null;
 
-  const triggerDynamicCompaction = (ctx: ExtensionContext) => {
+  const triggerDynamicCompaction = (ctx: ExtensionContext, shouldResume = false) => {
     if (isCompacting) return;
     isCompacting = true;
 
@@ -30,8 +32,19 @@ export default function (pi: ExtensionAPI) {
         isCompacting = false;
         const newUsage = ctx.getContextUsage();
         lastCompactedTokens = newUsage?.tokens ?? null;
-        if (ctx.hasUI) {
-          ctx.ui.notify("Dynamic compaction completed", "info");
+
+        if (shouldResume) {
+          if (ctx.hasUI) {
+            ctx.ui.notify("Dynamic compaction completed — resuming...", "info");
+          }
+          // Delay briefly to allow the runtime to settle before prompting
+          setTimeout(() => {
+            pi.sendUserMessage("continue");
+          }, 150);
+        } else {
+          if (ctx.hasUI) {
+            ctx.ui.notify("Dynamic compaction completed", "info");
+          }
         }
       },
       onError: (error) => {
@@ -43,7 +56,7 @@ export default function (pi: ExtensionAPI) {
     });
   };
 
-  pi.on("turn_end", (_event, ctx) => {
+  pi.on("turn_end", (event, ctx) => {
     if (isCompacting) return;
 
     const usage = ctx.getContextUsage();
@@ -55,7 +68,9 @@ export default function (pi: ExtensionAPI) {
     }
 
     if (usage.percent >= targetPercent) {
-      triggerDynamicCompaction(ctx);
+      // If the turn had tool results or planned more steps, resume automatically after compacting
+      const shouldResume = Boolean(event.continue || (event.toolResults && event.toolResults.length > 0));
+      triggerDynamicCompaction(ctx, shouldResume);
     }
   });
 
