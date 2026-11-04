@@ -1,7 +1,7 @@
 {
   "name": "@davidyusaku/pi-extensions",
   "version": "1.0.0",
-  "description": "Collection of extensions for the Pi coding agent harness: auto-title, block-env, readable-stats, dynamic-compaction, and dollar-skills.",
+  "description": "Collection of extensions and skills for the Pi coding agent harness: auto-title, block-env, readable-stats, dynamic-compaction, dollar-skills, and init skill.",
   "keywords": [
     "pi-package",
     "pi-coding-agent",
@@ -26,6 +26,9 @@
       "./extensions/readable-stats.ts",
       "./extensions/dynamic-compaction.ts",
       "./extensions/dollar-skills.ts"
+    ],
+    "skills": [
+      "./skills"
     ]
   },
   "peerDependencies": {

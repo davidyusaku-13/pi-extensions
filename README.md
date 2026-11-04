@@ -1,6 +1,6 @@
-# Pi Extensions
+# Pi Extensions & Skills
 
-A collection of extensions for the [Pi coding agent harness](https://github.com/earendil-works/pi-coding-agent).
+A collection of extensions and skills for the [Pi coding agent harness](https://github.com/earendil-works/pi-coding-agent).
 
 ## Included Extensions
 
@@ -33,6 +33,13 @@ A collection of extensions for the [Pi coding agent harness](https://github.com/
 * Allows invoking any skill with a leading `$` shortcut instead of `/skill:` (e.g. `$shadcn add button`).
 * Seamlessly transforms `$skill-name [args]` into `/skill:skill-name [args]` at the input layer.
 * Adds a dedicated TUI autocomplete dropdown for `$` showing all discoverable skills with fuzzy matching.
+
+## Included Skills
+
+### 1. `init` (`skills/init/SKILL.md`)
+* Generates or updates a concise `AGENTS.md` contributor guide tailored to the current repository.
+* Inspects project structure, build/test commands, code styles, and Git conventions before generating repository guidelines.
+* Usable via `/skill:init` or `$init`.
 
 ---
 

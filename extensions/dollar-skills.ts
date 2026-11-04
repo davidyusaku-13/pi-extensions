@@ -68,12 +68,13 @@ function getSearchDirectories(cwd: string): string[] {
   dirs.add(join(home, ".pi", "agent", "skills"));
   dirs.add(join(home, ".pi", "skills"));
 
-  // Project-level: walk up from cwd to find .agents/skills, .pi/skills, or .pi/agent/skills
+  // Project-level: walk up from cwd to find .agents/skills, .pi/skills, .pi/agent/skills, or skills
   let currentDir = resolve(cwd);
   while (true) {
     dirs.add(join(currentDir, ".agents", "skills"));
     dirs.add(join(currentDir, ".pi", "skills"));
     dirs.add(join(currentDir, ".pi", "agent", "skills"));
+    dirs.add(join(currentDir, "skills"));
 
     if (existsSync(join(currentDir, ".git")) || currentDir === home) {
       break;
