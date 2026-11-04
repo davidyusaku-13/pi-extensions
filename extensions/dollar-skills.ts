@@ -16,7 +16,6 @@ import { homedir } from "node:os";
  * - Discovers skills from ~/.agents/skills, .agents/skills, ~/.pi/agent/skills, .pi/skills, and pi.getCommands().
  * - Cross-platform: case-insensitive SKILL.md/skill.md discovery, handles direct .md files, and parses frontmatter names.
  * - Replaces current token on completion and avoids file completion collision on Tab.
- * - Provides /skills command to inspect all discoverable skills.
  */
 
 interface SkillMeta {
@@ -205,24 +204,7 @@ export default function (pi: ExtensionAPI) {
     };
   });
 
-  // 2. Register /skills command to list all available skills
-  pi.registerCommand("skills", {
-    description: "List all discoverable skills and their source locations",
-    handler: async (_args, ctx) => {
-      const skills = getAllSkills(pi, ctx.cwd);
-      if (skills.length === 0) {
-        ctx.ui.notify(
-          "No skills found. Create skills in ~/.agents/skills/<name>/SKILL.md or ~/.pi/agent/skills/<name>/SKILL.md",
-          "info"
-        );
-        return;
-      }
-      const list = skills.map((s) => `• $${s.name}${s.description ? ` — ${s.description}` : ""}`).join("\n");
-      ctx.ui.notify(`Discoverable skills (${skills.length}):\n${list}`, "info");
-    },
-  });
-
-  // 3. Register TUI Autocomplete provider with triggerCharacters: ["$"]
+  // 2. Register TUI Autocomplete provider with triggerCharacters: ["$"]
   pi.on("session_start", async (_event, ctx) => {
     if (!ctx.hasUI || typeof ctx.ui.addAutocompleteProvider !== "function") return;
 
