@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { type AutocompleteItem, type AutocompleteProvider, type AutocompleteSuggestions, fuzzyFilter } from "@earendil-works/pi-tui";
 import { readdirSync, existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve, dirname } from "node:path";
 import { homedir } from "node:os";
 
 /**
@@ -13,49 +13,158 @@ import { homedir } from "node:os";
  *
  * Features:
  * - Natural typing trigger: sets triggerCharacters: ["$"] so typing "$" automatically pops up suggestions.
- * - Discovers skills from ~/.agents/skills, .agents/skills, and pi.getCommands().
- * - Replaces current token on completion.
+ * - Discovers skills from ~/.agents/skills, .agents/skills, ~/.pi/agent/skills, .pi/skills, and pi.getCommands().
+ * - Cross-platform: case-insensitive SKILL.md/skill.md discovery, handles direct .md files, and parses frontmatter names.
+ * - Replaces current token on completion and avoids file completion collision on Tab.
+ * - Provides /skills command to inspect all discoverable skills.
  */
 
 interface SkillMeta {
   name: string;
   description?: string;
+  filePath?: string;
 }
 
-function discoverSkillsFromDisk(cwd: string): SkillMeta[] {
-  const skillsMap = new Map<string, SkillMeta>();
-  const searchDirs = [
-    join(homedir(), ".agents", "skills"),
-    join(cwd, ".agents", "skills"),
-    join(homedir(), ".pi", "agent", "skills"),
-    join(homedir(), ".pi", "skills"),
-  ];
+function parseSkillFrontmatter(content: string): { name?: string; description?: string } {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) return {};
 
-  for (const baseDir of searchDirs) {
-    if (!existsSync(baseDir)) continue;
-    try {
-      const entries = readdirSync(baseDir);
-      for (const entry of entries) {
-        if (entry.startsWith(".")) continue;
-        const skillDir = join(baseDir, entry);
-        const skillFile = join(skillDir, "SKILL.md");
-        if (existsSync(skillFile)) {
-          let description = "Skill";
-          try {
-            const raw = readFileSync(skillFile, "utf8");
-            const lines = raw.split(/\r?\n/);
-            for (const l of lines) {
-              const trimmed = l.trim();
-              if (trimmed.startsWith("description:")) {
-                description = trimmed.slice(12).trim().replace(/^[\"']|[\"']$/g, "");
-                break;
-              }
-            }
-          } catch {}
-          skillsMap.set(entry, { name: entry, description });
+  const lines = match[1].split(/\r?\n/);
+  let name: string | undefined;
+  let description: string | undefined;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!name && line.startsWith("name:")) {
+      name = line.slice(5).trim().replace(/^["']|["']$/g, "");
+    } else if (!description && line.startsWith("description:")) {
+      description = line.slice(12).trim().replace(/^["']|["']$/g, "");
+      // Handle YAML multiline (folded > or literal |)
+      if (description === ">" || description === "|") {
+        const multiline: string[] = [];
+        for (let j = i + 1; j < lines.length; j++) {
+          const nextLine = lines[j];
+          if (/^\s+/.test(nextLine)) {
+            multiline.push(nextLine.trim());
+          } else {
+            break;
+          }
+        }
+        if (multiline.length > 0) {
+          description = multiline.join(" ");
         }
       }
-    } catch {}
+    }
+  }
+
+  return { name, description };
+}
+
+function getSearchDirectories(cwd: string): string[] {
+  const dirs = new Set<string>();
+  const home = homedir();
+
+  // User-level standard paths
+  dirs.add(join(home, ".agents", "skills"));
+  dirs.add(join(home, ".pi", "agent", "skills"));
+  dirs.add(join(home, ".pi", "skills"));
+
+  // Project-level: walk up from cwd to find .agents/skills, .pi/skills, or .pi/agent/skills
+  let currentDir = resolve(cwd);
+  while (true) {
+    dirs.add(join(currentDir, ".agents", "skills"));
+    dirs.add(join(currentDir, ".pi", "skills"));
+    dirs.add(join(currentDir, ".pi", "agent", "skills"));
+
+    if (existsSync(join(currentDir, ".git")) || currentDir === home) {
+      break;
+    }
+    const parent = dirname(currentDir);
+    if (!parent || parent === currentDir) {
+      break;
+    }
+    currentDir = parent;
+  }
+
+  return Array.from(dirs);
+}
+
+function scanDirectoryForSkills(baseDir: string, skillsMap: Map<string, SkillMeta>) {
+  if (!existsSync(baseDir)) return;
+  try {
+    const entries = readdirSync(baseDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+
+      const fullPath = join(baseDir, entry.name);
+
+      if (entry.isDirectory()) {
+        // Case-insensitive search for SKILL.md or skill.md
+        let skillFilePath: string | undefined;
+        try {
+          const subEntries = readdirSync(fullPath);
+          const found = subEntries.find((f) => f.toLowerCase() === "skill.md");
+          if (found) {
+            skillFilePath = join(fullPath, found);
+          }
+        } catch {}
+
+        if (skillFilePath && existsSync(skillFilePath)) {
+          let description = "Skill";
+          let skillName = entry.name;
+          try {
+            const raw = readFileSync(skillFilePath, "utf8");
+            const meta = parseSkillFrontmatter(raw);
+            if (meta.name) skillName = meta.name;
+            if (meta.description) description = meta.description;
+          } catch {}
+
+          if (!skillsMap.has(skillName)) {
+            skillsMap.set(skillName, { name: skillName, description, filePath: skillFilePath });
+          }
+        }
+      } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
+        // Direct markdown file (e.g. ~/.pi/agent/skills/shadcn.md)
+        if (entry.name.toLowerCase() === "skill.md") continue;
+
+        let description = "Skill";
+        let skillName = entry.name.replace(/\.md$/i, "");
+        try {
+          const raw = readFileSync(fullPath, "utf8");
+          const meta = parseSkillFrontmatter(raw);
+          if (meta.name) skillName = meta.name;
+          if (meta.description) description = meta.description;
+        } catch {}
+
+        if (!skillsMap.has(skillName)) {
+          skillsMap.set(skillName, { name: skillName, description, filePath: fullPath });
+        }
+      }
+    }
+  } catch {}
+}
+
+function getAllSkills(pi: ExtensionAPI, cwd: string): SkillMeta[] {
+  const skillsMap = new Map<string, SkillMeta>();
+
+  // 1. First priority: Pi's officially registered commands via pi.getCommands()
+  try {
+    const allCommands = pi.getCommands();
+    for (const cmd of allCommands) {
+      if (cmd.name.startsWith("skill:")) {
+        const name = cmd.name.slice(6);
+        skillsMap.set(name, {
+          name,
+          description: cmd.description,
+        });
+      }
+    }
+  } catch {}
+
+  // 2. Discover from disk locations (cross-platform, case-insensitive, supporting subdirs & .md files)
+  const searchDirs = getSearchDirectories(cwd);
+  for (const dir of searchDirs) {
+    scanDirectoryForSkills(dir, skillsMap);
   }
 
   return Array.from(skillsMap.values());
@@ -63,19 +172,30 @@ function discoverSkillsFromDisk(cwd: string): SkillMeta[] {
 
 export default function (pi: ExtensionAPI) {
   // 1. Intercept user input and transform "$skill-name <args>" into "/skill:skill-name <args>"
-  pi.on("input", async (event) => {
+  pi.on("input", async (event, ctx) => {
     if (event.source === "extension") {
       return { action: "continue" };
     }
 
     const text = event.text.trimStart();
-    const match = text.match(/^\$([a-zA-Z0-9_-]+)(?:\s+(.*)|$)/s);
+    // Match leading $skill-name (starting with a letter, e.g. $shadcn or $pdf-tools)
+    const match = text.match(/^\$([a-zA-Z][a-zA-Z0-9_-]*)(?:\s+(.*)|$)/s);
     if (!match) {
       return { action: "continue" };
     }
 
     const skillName = match[1];
     const rest = match[2] ? match[2].trim() : "";
+
+    // If known skills are available on the system, only transform matching skills
+    // so normal expressions like $VARIABLE, $PATH, or code are not hijacked
+    const allSkills = getAllSkills(pi, ctx.cwd);
+    const isKnown = allSkills.some((s) => s.name === skillName);
+
+    if (allSkills.length > 0 && !isKnown) {
+      return { action: "continue" };
+    }
+
     const transformed = rest ? `/skill:${skillName} ${rest}` : `/skill:${skillName}`;
 
     return {
@@ -85,35 +205,26 @@ export default function (pi: ExtensionAPI) {
     };
   });
 
-  // 2. Register TUI Autocomplete provider with triggerCharacters: ["$"]
+  // 2. Register /skills command to list all available skills
+  pi.registerCommand("skills", {
+    description: "List all discoverable skills and their source locations",
+    handler: async (_args, ctx) => {
+      const skills = getAllSkills(pi, ctx.cwd);
+      if (skills.length === 0) {
+        ctx.ui.notify(
+          "No skills found. Create skills in ~/.agents/skills/<name>/SKILL.md or ~/.pi/agent/skills/<name>/SKILL.md",
+          "info"
+        );
+        return;
+      }
+      const list = skills.map((s) => `• $${s.name}${s.description ? ` — ${s.description}` : ""}`).join("\n");
+      ctx.ui.notify(`Discoverable skills (${skills.length}):\n${list}`, "info");
+    },
+  });
+
+  // 3. Register TUI Autocomplete provider with triggerCharacters: ["$"]
   pi.on("session_start", async (_event, ctx) => {
     if (!ctx.hasUI || typeof ctx.ui.addAutocompleteProvider !== "function") return;
-
-    let cachedSkills: SkillMeta[] | null = null;
-
-    const getSkills = (): SkillMeta[] => {
-      if (cachedSkills && cachedSkills.length > 0) return cachedSkills;
-
-      // 1. Try pi.getCommands()
-      try {
-        const allCommands = pi.getCommands();
-        const skillCommands = allCommands
-          .filter((c) => c.name.startsWith("skill:"))
-          .map((c) => ({
-            name: c.name.slice(6),
-            description: c.description,
-          }));
-
-        if (skillCommands.length > 0) {
-          cachedSkills = skillCommands;
-          return cachedSkills;
-        }
-      } catch {}
-
-      // 2. Fallback to scanning disk locations (~/.agents/skills, etc.)
-      cachedSkills = discoverSkillsFromDisk(ctx.cwd);
-      return cachedSkills;
-    };
 
     ctx.ui.addAutocompleteProvider((current: AutocompleteProvider): AutocompleteProvider => {
       const existingTriggers = current.triggerCharacters ?? [];
@@ -126,16 +237,33 @@ export default function (pi: ExtensionAPI) {
           const currentLine = lines[cursorLine] ?? "";
           const textBeforeCursor = currentLine.slice(0, cursorCol);
 
-          // Match trailing $ or $partialName at boundary
-          const match = textBeforeCursor.match(/(?:^|[\s])\$([a-zA-Z0-9_-]*)$/);
+          // Match trailing $ or $partialName at boundary (including wrappers like `($` or ``$``)
+          const match = textBeforeCursor.match(/(?:^|[\s([{\`])\$([a-zA-Z0-9_-]*)$/);
           if (!match) {
             return current.getSuggestions(lines, cursorLine, cursorCol, options);
           }
 
           const query = match[1];
-          const skills = getSkills();
+          const skills = getAllSkills(pi, ctx.cwd);
 
-          if (skills.length === 0 || options.signal.aborted) {
+          if (options.signal.aborted) {
+            return current.getSuggestions(lines, cursorLine, cursorCol, options);
+          }
+
+          // If no skills found anywhere on system, inform user when typing bare $
+          if (skills.length === 0) {
+            if (!query) {
+              return {
+                items: [
+                  {
+                    value: "$",
+                    label: "$ (No skills installed)",
+                    description: "Add to ~/.agents/skills/ or ~/.pi/agent/skills/",
+                  },
+                ],
+                prefix: "$",
+              };
+            }
             return current.getSuggestions(lines, cursorLine, cursorCol, options);
           }
 
@@ -165,10 +293,33 @@ export default function (pi: ExtensionAPI) {
         },
 
         applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
+          if (prefix.startsWith("$")) {
+            // Don't apply placeholder hint item
+            if (item.value === "$") {
+              return { lines, cursorLine, cursorCol };
+            }
+            const currentLine = lines[cursorLine] || "";
+            const beforePrefix = currentLine.slice(0, cursorCol - prefix.length);
+            const afterCursor = currentLine.slice(cursorCol);
+            const insertValue = afterCursor.startsWith(" ") ? item.value.trimEnd() : item.value;
+            const newLine = beforePrefix + insertValue + afterCursor;
+            const newLines = [...lines];
+            newLines[cursorLine] = newLine;
+            return {
+              lines: newLines,
+              cursorLine,
+              cursorCol: beforePrefix.length + insertValue.length,
+            };
+          }
           return current.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
         },
 
         shouldTriggerFileCompletion(lines, cursorLine, cursorCol) {
+          const currentLine = lines[cursorLine] || "";
+          const textBeforeCursor = currentLine.slice(0, cursorCol);
+          if (/(?:^|[\s([{\`])\$([a-zA-Z0-9_-]*)$/.test(textBeforeCursor)) {
+            return false;
+          }
           return current.shouldTriggerFileCompletion?.(lines, cursorLine, cursorCol) ?? true;
         },
       };

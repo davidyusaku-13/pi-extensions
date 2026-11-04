@@ -1,7 +1,7 @@
 {
   "name": "@davidyusaku/pi-extensions",
   "version": "1.0.0",
-  "description": "Collection of extensions for the Pi coding agent harness: auto-title, block-env, and readable-stats.",
+  "description": "Collection of extensions for the Pi coding agent harness: auto-title, block-env, readable-stats, dynamic-compaction, and dollar-skills.",
   "keywords": [
     "pi-package",
     "pi-coding-agent",
