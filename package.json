@@ -1,7 +1,7 @@
 {
   "name": "@davidyusaku/pi-extensions",
   "version": "1.0.0",
-  "description": "Collection of extensions, skills, and themes for the Pi coding agent harness: auto-title, block-env, block-python, readable-stats, dynamic-compaction, dollar-skills, init skill, and catppuccin-mocha theme.",
+  "description": "Collection of extensions, skills, and themes for the Pi coding agent harness: auto-title, block-env, block-python, readable-stats, dynamic-compaction, dollar-skills, activity-stats, init skill, and catppuccin-mocha theme.",
   "keywords": [
     "pi-package",
     "pi-coding-agent",
@@ -26,7 +26,8 @@
       "./extensions/block-python.ts",
       "./extensions/readable-stats.ts",
       "./extensions/dynamic-compaction.ts",
-      "./extensions/dollar-skills.ts"
+      "./extensions/dollar-skills.ts",
+      "./extensions/activity-stats.ts"
     ],
     "skills": [
       "./skills"

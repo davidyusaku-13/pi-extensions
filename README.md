@@ -40,6 +40,15 @@ A collection of extensions, skills, and themes for the [Pi coding agent harness]
 * Seamlessly transforms `$skill-name [args]` into `/skill:skill-name [args]` at the input layer.
 * Adds a dedicated TUI autocomplete dropdown for `$` showing all discoverable skills with fuzzy matching.
 
+### 7. `activity-stats` (`extensions/activity-stats.ts`)
+* Analyzes all local Pi session history (`~/.pi/agent/sessions/**/*.jsonl`) to visualize your most active hours and usage patterns.
+* Provides the `/stats` command (and `/activity` alias) featuring an interactive, scrollable TUI modal:
+  - **24-Hour Activity Histogram**: Visual ASCII bar charts with ranked peak hours.
+  - **Weekly & Habit Breakdown**: Daily activity counts and routine windows (Evening, Afternoon, Late Night, Sleep/Off).
+  - **Multi-Period Filtering**: Quick tabs/flags for All Time, Past 7 Days (`/stats week`), Today (`/stats today`), and Past 30 Days (`/stats month`).
+  - **Current Session Inspector**: Use `/stats session` to view real-time turn counts, token consumption, cache hit rate %, and estimated API costs for the active conversation.
+  - **Universal Support**: Renders a rich interactive modal in TUI mode and a structured report in CLI/print mode.
+
 ## Included Skills
 
 ### 1. `init` (`skills/init/SKILL.md`)
