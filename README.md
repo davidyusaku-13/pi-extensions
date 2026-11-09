@@ -1,6 +1,6 @@
-# Pi Extensions, Skills & Themes
+# Pi Extensions & Themes
 
-A collection of extensions, skills, and themes for the [Pi coding agent harness](https://github.com/earendil-works/pi-coding-agent).
+A collection of extensions and themes for the [Pi coding agent harness](https://github.com/earendil-works/pi-coding-agent).
 
 ## Included Extensions
 
@@ -50,12 +50,11 @@ A collection of extensions, skills, and themes for the [Pi coding agent harness]
   - **Current Session Inspector**: Use `/stats session` to view real-time turn counts, token consumption, cache hit rate %, and estimated API costs for the active conversation.
   - **Universal Support**: Renders a rich interactive modal in TUI mode and a structured report in CLI/print mode.
 
-## Included Skills
-
-### 1. `init` (`skills/init/SKILL.md`)
-* Generates or updates a concise `AGENTS.md` contributor guide tailored to the current repository.
-* Inspects project structure, build/test commands, code styles, and Git conventions before generating repository guidelines.
-* Usable via `/skill:init` or `$init`.
+### 8. `init` (`extensions/init.ts`)
+* Adopted directly from [OpenAI Codex](https://github.com/openai/codex)'s native `/init` command and prompt asset (`codex-rs/tui/assets/prompt_for_init_command.md`).
+* Registers the `/init` slash command to generate a structured `AGENTS.md` repository guidelines and contributor guide.
+* Evaluates project structure, build/test commands, code styles, testing practices, and commit/PR history.
+* Safe by default: refuses to overwrite an existing `AGENTS.md` unless requested via `--force` or `-f` (e.g. `/init --force`). Also accepts custom instructions (e.g. `/init focus on uv workflows`).
 
 ## Included Themes
 
