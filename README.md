@@ -31,8 +31,9 @@ A collection of extensions, skills, and themes for the [Pi coding agent harness]
 * Displays prompt tokens, completion tokens, context limits, and active cache ratios cleanly in the TUI footer.
 
 ### 5. `dynamic-compaction` (`extensions/dynamic-compaction.ts`)
-* Automatically triggers compaction when context usage reaches a percentage threshold (defaults to **40%**).
+* Automatically triggers compaction when context usage reaches a percentage threshold (defaults to **40%**) once the agent settles (idle), preventing disruptive mid-task context loss.
 * Avoids waiting until 90%+ capacity, keeping model inferences fast, focused, and inexpensive.
+* Includes an emergency safety ceiling (85%) during active turns (`turn_end`) to protect against sudden context overflows from large tool outputs, auto-resuming pending steps.
 * Provides a `/compact-threshold` command to view real-time context usage or adjust the target threshold dynamically (e.g. `/compact-threshold 35`).
 
 ### 6. `dollar-skills` (`extensions/dollar-skills.ts`)
