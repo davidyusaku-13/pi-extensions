@@ -26,9 +26,9 @@ A collection of extensions and themes for the [Pi coding agent harness](https://
 * Non-execution references (e.g. `git`, `cat`, `grep`, `find`) and valid `uv`/`uvx` invocations pass through untouched.
 
 ### 4. `readable-stats` (`extensions/readable-stats.ts`)
-* Formats terminal footer metrics into clean, readable, grouped token counters using Pi's official `ctx.ui.setFooter()` hook.
-* Displays prompt tokens, completion tokens, context limits, and active cache hit ratios cleanly in the TUI footer.
-* Automatically detects the `pi-antigravity` package when installed and displays a live Gemini subscription quota column (`gemini: <5h>% (<reset>) · wk <wk>% (<reset>)`) with background auto-refresh and warning/error thresholds.
+* Formats terminal footer metrics into clean, readable, grouped token counters.
+* Uses Pi's official `ctx.ui.setFooter()` Extension API hook.
+* Displays prompt tokens, completion tokens, context limits, and active cache ratios cleanly in the TUI footer.
 
 ### 5. `dynamic-compaction` (`extensions/dynamic-compaction.ts`)
 * Automatically triggers compaction when context usage reaches a percentage threshold (defaults to **40%**) once the agent settles (idle), preventing disruptive mid-task context loss.
