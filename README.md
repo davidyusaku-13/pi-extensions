@@ -56,6 +56,17 @@ A collection of extensions and themes for the [Pi coding agent harness](https://
 * Evaluates project structure, build/test commands, code styles, testing practices, and commit/PR history.
 * Safe by default: refuses to overwrite an existing `AGENTS.md` unless requested via `--force` or `-f` (e.g. `/init --force`). Also accepts custom instructions (e.g. `/init focus on uv workflows`).
 
+### 9. `ensure-packages` (`extensions/ensure-packages.ts`)
+* Automatically checks and guarantees that essential companion packages are installed in Pi:
+  - `@juicesharp/rpiv-ask-user-question`
+  - `@juicesharp/rpiv-todo`
+  - `@juicesharp/rpiv-web-tools`
+  - `@juicesharp/rpiv-btw`
+  - `pi-antigravity`
+  - `@ff-labs/pi-fff`
+* Runs silently on session startup; if any package is missing, automatically installs it via `pi install` in the background and notifies you to `/reload`.
+* Provides the `/ensure-packages` slash command to view package installation status or run `/ensure-packages check` for a dry run.
+
 ## Included Themes
 
 ### 1. `catppuccin-mocha` (`themes/catppuccin-mocha.json`)
