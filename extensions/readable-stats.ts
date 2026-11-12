@@ -1,14 +1,136 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { isAbsolute, relative, resolve, sep, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 
 /**
  * readable-stats extension
  *
  * Formats footer stats into clean, grouped token metrics using Pi's official
  * ctx.ui.setFooter() Extension API hook. No minified bundle chunk patching required!
+ *
+ * Automatically displays Gemini subscription quota limits (5-hour & weekly) with reset countdowns
+ * when the pi-antigravity package is installed and active.
  */
+
+interface GeminiQuota {
+  fiveHour?: { fraction: number; resetTime?: string };
+  weekly?: { fraction: number; resetTime?: string };
+  fetchedAt: number;
+}
+
+const ANTIGRAVITY_ENDPOINTS = [
+  "https://daily-cloudcode-pa.googleapis.com",
+  "https://cloudcode-pa.googleapis.com",
+  "https://daily-cloudcode-pa.sandbox.googleapis.com",
+];
+
+function isAntigravityInstalled(pi: ExtensionAPI): boolean {
+  if (typeof pi.getCommands === "function") {
+    const commands = pi.getCommands();
+    if (commands.some((c) => c.name === "antigravity.usage")) {
+      return true;
+    }
+  }
+  const agentDir = process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
+  const pkgDir = join(agentDir, "npm", "node_modules", "pi-antigravity");
+  return existsSync(pkgDir);
+}
+
+function getAntigravityAuth(): { token: string; projectId: string } | null {
+  const agentDir = process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
+  const authFile = join(agentDir, "auth.json");
+  if (!existsSync(authFile)) return null;
+  try {
+    const raw = readFileSync(authFile, "utf8");
+    const parsed = JSON.parse(raw);
+    const ag = parsed?.antigravity;
+    if (ag?.access) {
+      return {
+        token: ag.access,
+        projectId: ag.projectId || "aicode-consumers",
+      };
+    }
+  } catch {}
+  return null;
+}
+
+function formatReset(resetTime?: string): string {
+  if (!resetTime) return "";
+  const ts = Date.parse(resetTime);
+  if (!Number.isFinite(ts)) return "";
+  const delta = ts - Date.now();
+  if (delta <= 0) return "now";
+  const totalMin = Math.round(delta / 60000);
+  const days = Math.floor(totalMin / (60 * 24));
+  const hours = Math.floor((totalMin % (60 * 24)) / 60);
+  const mins = totalMin % 60;
+  if (days > 0) return `${days}d${hours}h`;
+  if (hours > 0) return `${hours}h${mins}m`;
+  return `${mins}m`;
+}
+
+async function fetchGeminiQuota(): Promise<GeminiQuota | null> {
+  const auth = getAntigravityAuth();
+  if (!auth) return null;
+
+  for (const endpoint of ANTIGRAVITY_ENDPOINTS) {
+    try {
+      const res = await fetch(`${endpoint}/v1internal:retrieveUserQuotaSummary`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${auth.token}`,
+          "Content-Type": "application/json",
+          "User-Agent":
+            "antigravity/cli/1.4.0 (aidev_client; os_type=linux; arch=amd64; cl=982146307; auth_method=consumer)",
+          Accept: "application/json",
+        },
+        body: "{}",
+      });
+
+      if (!res.ok) continue;
+
+      const data = (await res.json()) as any;
+      const groups = Array.isArray(data?.groups) ? data.groups : [];
+      const geminiGroup = groups.find(
+        (g: any) =>
+          typeof g?.displayName === "string" &&
+          g.displayName.toLowerCase().includes("gemini")
+      );
+
+      if (!geminiGroup || !Array.isArray(geminiGroup.buckets)) continue;
+
+      let fiveHour: { fraction: number; resetTime?: string } | undefined;
+      let weekly: { fraction: number; resetTime?: string } | undefined;
+
+      for (const bucket of geminiGroup.buckets) {
+        const id = String(bucket.bucketId || bucket.displayName || "").toLowerCase();
+        const fraction =
+          typeof bucket.remainingFraction === "number" ? bucket.remainingFraction : undefined;
+        if (fraction === undefined) continue;
+
+        const window = String(bucket.window || "").toLowerCase();
+        if (window === "5h" || id.includes("5h") || id.includes("five")) {
+          fiveHour = { fraction, resetTime: bucket.resetTime };
+        } else if (window === "weekly" || id.includes("week")) {
+          weekly = { fraction, resetTime: bucket.resetTime };
+        }
+      }
+
+      return {
+        fiveHour,
+        weekly,
+        fetchedAt: Date.now(),
+      };
+    } catch {
+      // try next endpoint
+    }
+  }
+
+  return null;
+}
 
 function formatTokens(count: number): string {
   return count < 1e3
@@ -39,14 +161,59 @@ function sanitizeStatusText(text: string): string {
 }
 
 export default function (pi: ExtensionAPI) {
+  let cachedQuota: GeminiQuota | null = null;
+  let lastQuotaFetchTime = 0;
+  let isFetchingQuota = false;
+  let tuiRef: { requestRender: () => void } | undefined;
+
+  const triggerQuotaRefresh = () => {
+    if (!isAntigravityInstalled(pi)) return;
+    const now = Date.now();
+    // Throttle: avoid re-fetching if less than 30s since last fetch
+    if (isFetchingQuota || (cachedQuota && now - lastQuotaFetchTime < 30_000)) {
+      return;
+    }
+    isFetchingQuota = true;
+    void fetchGeminiQuota()
+      .then((quota) => {
+        isFetchingQuota = false;
+        if (quota) {
+          cachedQuota = quota;
+          lastQuotaFetchTime = Date.now();
+          tuiRef?.requestRender();
+        }
+      })
+      .catch(() => {
+        isFetchingQuota = false;
+      });
+  };
+
+  // Periodic background refresh every 60 seconds
+  const intervalId = setInterval(triggerQuotaRefresh, 60_000);
+  if (typeof intervalId.unref === "function") {
+    intervalId.unref();
+  }
+
+  // Refresh quota on turn completion when model tokens have been consumed
+  pi.on("turn_end", () => {
+    triggerQuotaRefresh();
+  });
+
   pi.on("session_start", (_event, ctx) => {
+    triggerQuotaRefresh();
     if (!ctx.hasUI || typeof ctx.ui.setFooter !== "function") return;
 
     ctx.ui.setFooter((tui, theme, footerData) => {
+      tuiRef = tui;
       const unsub = footerData.onBranchChange(() => tui.requestRender());
 
       return {
-        dispose: unsub,
+        dispose: () => {
+          unsub();
+          if (tuiRef === tui) {
+            tuiRef = undefined;
+          }
+        },
         // invalidate() is a no-op: the footer re-renders on every render() call,
         // and branch changes are handled by the onBranchChange subscription above.
         invalidate() {},
@@ -158,6 +325,39 @@ export default function (pi: ExtensionAPI) {
             contextPercentStr = contextPercentDisplay;
           }
           groups.push(contextPercentStr);
+
+          // Gemini subscription quota (5-hour and weekly limits with reset countdowns)
+          if (cachedQuota && (cachedQuota.fiveHour || cachedQuota.weekly)) {
+            const parts: string[] = [];
+            let minFraction = 1;
+
+            if (cachedQuota.fiveHour) {
+              const p = (cachedQuota.fiveHour.fraction * 100).toFixed(1);
+              const r = formatReset(cachedQuota.fiveHour.resetTime);
+              parts.push(r ? `${p}% (${r})` : `${p}%`);
+              minFraction = Math.min(minFraction, cachedQuota.fiveHour.fraction);
+            }
+
+            if (cachedQuota.weekly) {
+              const p = (cachedQuota.weekly.fraction * 100).toFixed(1);
+              const r = formatReset(cachedQuota.weekly.resetTime);
+              parts.push(r ? `wk ${p}% (${r})` : `wk ${p}%`);
+              minFraction = Math.min(minFraction, cachedQuota.weekly.fraction);
+            }
+
+            if (parts.length > 0) {
+              const quotaText = `gemini: ${parts.join(" \u00B7 ")}`;
+              let quotaStr: string;
+              if (minFraction <= 0.15) {
+                quotaStr = theme.fg("error", quotaText);
+              } else if (minFraction <= 0.3) {
+                quotaStr = theme.fg("warning", quotaText);
+              } else {
+                quotaStr = quotaText;
+              }
+              groups.push(quotaStr);
+            }
+          }
 
           const statsLeft = groups.join(" \u2502 ");
           let statsLeftWidth = visibleWidth(statsLeft);
